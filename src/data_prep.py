@@ -1,42 +1,69 @@
 import pandas as pd
 from bs4 import BeautifulSoup
 import re
-from sklearn.preprocessing import MinMaxScaler
 
-INPUT_PATH = "data/posts_questions.csv"
-OUTPUT_PATH = "data/cleaned_posts_questions_data.csv"
+
+INPUT_PATH = "../data/posts_questions.csv"
+OUTPUT_PATH = "../data/cleaned_posts_questions2.csv"
 
 def clean_html(text):
     if pd.isna(text):
         return ""
-    soup = BeautifulSoup(text, "html.parser")
-    for tag in soup.find_all(["code", "pre", "script", "style"]):
-        tag.decompose()
-    text = soup.get_text(separator=" ")
-    text = re.sub(r'http\S+|www\S+', '', text)
-    text = re.sub(r'\s+', ' ', text)
 
-    return text.strip()
+    try:
+        soup = BeautifulSoup(text, "lxml")
 
-df = pd.read_csv(INPUT_PATH, nrows=10000)
+        # Remove code-heavy and non-content elements
+        for tag in soup.find_all(["code", "pre", "script", "style"]):
+            tag.decompose()
+
+        text = soup.get_text(separator=" ")
+
+        # Remove URLs
+        text = re.sub(r'http\S+|www\S+', '', text)
+
+        # Normalize whitespace
+        text = re.sub(r'\s+', ' ', text)
+
+        # Remove stray surrogate characters
+        text = text.encode("utf-8", "ignore").decode("utf-8")
+
+        return text.strip()
+
+    except Exception:
+        return ""
+
+
+# ---------------- LOAD DATA ----------------
+df = pd.read_csv(INPUT_PATH)
+df = df[(df["answer_count"] > 0) &
+    (df["view_count"] > 50) &
+    (df["title"].notna()) &
+    (df["body"].notna())]
+df = df.sample(frac=1,random_state=42)
+
 
 # Combine title + body
 df["question"] = df["title"].astype(str) + " " + df["body"].astype(str)
 df["question"] = df["question"].apply(clean_html)
 
-# ---------------- DIFFICULTY SCORING ----------------
-scaler = MinMaxScaler()
 
-df[["score_n", "answer_n", "view_n"]] = scaler.fit_transform(df[["score", "answer_count", "view_count"]])
+# ---------------- DIFFICULTY METRIC ----------------
 
-df["difficulty_score"] = (
-    0.5 * df["view_n"] +      
-    0.3 * df["answer_n"] +   
-    0.2 * df["score_n"]  
-)
+df["answer_rate"] = df["answer_count"] / df["view_count"]
 
-q1 = df["difficulty_score"].quantile(0.33)
-q2 = df["difficulty_score"].quantile(0.66)
+df["difficulty_metric"] = df["answer_rate"]
+
+print(df["difficulty_metric"].describe())
+
+
+
+ 
+print(df["answer_count"].describe())
+
+# Quantile-based labeling
+q1 = df["difficulty_metric"].quantile(0.33)
+q2 = df["difficulty_metric"].quantile(0.66)
 
 def label_difficulty(x):
     if x <= q1:
@@ -46,6 +73,20 @@ def label_difficulty(x):
     else:
         return "Easy"
 
-df["difficulty"] = df["difficulty_score"].apply(label_difficulty)
-clean_df = df[["question", "difficulty"]]
+df["difficulty"] = df["difficulty_metric"].apply(label_difficulty)
+
+# ---------------- FINAL DATASET ----------------
+clean_df = df[[
+    "question",
+    "difficulty",
+    "answer_count",
+    "view_count",
+    "score",
+    "tags"
+]]
+
+print("\nClass distribution:\n")
+print(clean_df["difficulty"].value_counts())
+
 clean_df.to_csv(OUTPUT_PATH, index=False)
+print("\nCleaned dataset saved to:", OUTPUT_PATH)
