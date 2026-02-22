@@ -8,12 +8,17 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.tree import DecisionTreeClassifier
+from sentence_transformers import SentenceTransformer
+import joblib
 
 import numpy as np
-from scipy.sparse import hstack
+from scipy.sparse import hstack, csr_matrix
 
 
-DATA_PATH = "../data/cleaned_posts_questions2.csv"
+import os
+
+DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/processed/processed_data.csv"))
 
 
 def load_data():
@@ -25,7 +30,18 @@ def load_data():
     return df
 
 
-def create_features(df):
+def create_features(df, use_embeddings=False):
+    if use_embeddings:
+        print("Using Sentence Embeddings...")
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        X_embeddings = model.encode(df["question"].tolist(), show_progress_bar=True)
+        scaler = StandardScaler()
+        X_numeric = scaler.fit_transform(
+            df[["score", "question_length", "tag_count"]]
+        )
+        X = hstack([csr_matrix(X_embeddings), csr_matrix(X_numeric)])
+        return X, df["difficulty"], model
+
     vectorizer = TfidfVectorizer(
         ngram_range=(1, 2), stop_words="english", max_features=50000, min_df=5
     )
@@ -62,19 +78,45 @@ if __name__ == "__main__":
         X, y, test_size=0.2, random_state=69, stratify=y
     )
 
-    # print("\nTrain shape:", X_train.shape)
-    # print("Test shape:", X_test.shape)
+    # 1. Logistic Regression
+    print("\n--- Training Logistic Regression ---")
+    lr_model = LogisticRegression(max_iter=5000, solver="saga", class_weight="balanced")
+    lr_model.fit(X_train, y_train)
+    y_pred_lr = lr_model.predict(X_test)
 
-    model = LogisticRegression(max_iter=5000, solver="saga", class_weight="balanced")
+    # 2. Decision Tree
+    print("\n--- Training Decision Tree ---")
+    dt_model = DecisionTreeClassifier(max_depth=20, class_weight="balanced", random_state=42)
+    dt_model.fit(X_train, y_train)
+    y_pred_dt = dt_model.predict(X_test)
 
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    # Comparison Report
+    print("\n" + "="*30)
+    print("MODEL PERFORMANCE COMPARISON")
+    print("="*30)
 
-    print("\nAccuracy:", accuracy_score(y_test, y_pred))
-
+    print("\n[Logistic Regression]")
+    print(f"Accuracy: {accuracy_score(y_test, y_pred_lr):.4f}")
     print("\nClassification Report:\n")
-    print(classification_report(y_test, y_pred))
+    print(classification_report(y_test, y_pred_lr))
 
-    print("\nConfusion Matrix:\n")
-    cm = confusion_matrix(y_test, y_pred)
-    print(cm)
+    print("\n[Decision Tree]")
+    print(f"Accuracy: {accuracy_score(y_test, y_pred_dt):.4f}")
+    print("\nClassification Report:\n")
+    print(classification_report(y_test, y_pred_dt))
+
+    print("\n--- Confusion Matrix (Decision Tree) ---")
+    print(confusion_matrix(y_test, y_pred_dt))
+
+    # Save Models
+    MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../models"))
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    
+    print("\n--- Saving Models ---")
+    if isinstance(vectorizer, TfidfVectorizer):
+        joblib.dump(vectorizer, os.path.join(MODELS_DIR, "vectorizer.joblib"))
+    
+    joblib.dump(lr_model, os.path.join(MODELS_DIR, "lr_model.joblib"))
+    joblib.dump(dt_model, os.path.join(MODELS_DIR, "dt_model.joblib"))
+    
+    print(f"Models saved successfully to: {MODELS_DIR}")
