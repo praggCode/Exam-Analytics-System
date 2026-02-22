@@ -1,10 +1,11 @@
 import pandas as pd
 from bs4 import BeautifulSoup
 import re
+import numpy as np
 
 
 INPUT_PATH = "../data/posts_questions.csv"
-OUTPUT_PATH = "../data/cleaned_posts_questions2.csv"
+OUTPUT_PATH = "../data/cleaned_posts_questions_data.csv"
 
 def clean_html(text):
     if pd.isna(text):
@@ -12,20 +13,12 @@ def clean_html(text):
 
     try:
         soup = BeautifulSoup(text, "lxml")
-
-        # Remove code-heavy and non-content elements
         for tag in soup.find_all(["code", "pre", "script", "style"]):
             tag.decompose()
 
         text = soup.get_text(separator=" ")
-
-        # Remove URLs
         text = re.sub(r'http\S+|www\S+', '', text)
-
-        # Normalize whitespace
         text = re.sub(r'\s+', ' ', text)
-
-        # Remove stray surrogate characters
         text = text.encode("utf-8", "ignore").decode("utf-8")
 
         return text.strip()
@@ -52,13 +45,18 @@ df["question"] = df["question"].apply(clean_html)
 
 df["answer_rate"] = df["answer_count"] / df["view_count"]
 
-df["difficulty_metric"] = df["answer_rate"]
+df["log_views"] = np.log1p(df["view_count"])
+df["score_norm"] = (df["score"] - df["score"].min()) / (df["score"].max() - df["score"].min())
+
+df["difficulty_metric"] = (
+    0.5 * df["answer_rate"] +
+    0.3 * df["score_norm"] +
+    0.2 * df["log_views"]
+)
 
 print(df["difficulty_metric"].describe())
 
 
-
- 
 print(df["answer_count"].describe())
 
 # Quantile-based labeling
@@ -81,8 +79,7 @@ clean_df = df[[
     "difficulty",
     "answer_count",
     "view_count",
-    "score",
-    "tags"
+    "score"
 ]]
 
 print("\nClass distribution:\n")

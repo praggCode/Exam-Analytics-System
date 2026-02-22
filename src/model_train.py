@@ -1,24 +1,23 @@
 import pandas as pd
-
 from sklearn.feature_extraction.text import TfidfVectorizer
-
 from sklearn.model_selection import train_test_split
-
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-
 import numpy as np
 from scipy.sparse import hstack
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import LinearSVC
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning)
 
-
-DATA_PATH = "../data/cleaned_posts_questions2.csv"
+DATA_PATH = "../data/cleaned_posts_questions_data.csv"
 
 
 def load_data():
     df = pd.read_csv(DATA_PATH)
-    df = df.sample(n=300000, random_state=42)
+    if len(df) > 300000:
+        df = df.sample(n=300000, random_state=42)
     print("Dataset shape:", df.shape)
     print("\nClass distribution:\n")
     print(df["difficulty"].value_counts())
@@ -34,7 +33,7 @@ def create_features(df):
     scaler = StandardScaler()
 
     X_numeric = scaler.fit_transform(
-        df[["score", "question_length","tag_count"]]
+        df[["score", "question_length"]]
     )
     
     X = hstack([X_tfidf, X_numeric])
@@ -50,7 +49,6 @@ if __name__ == "__main__":
     df = df.dropna(subset=["question"])
     df["question"] = df["question"].astype(str)
     df["question_length"] = df["question"].apply(len)
-    df["tag_count"] = df["tags"].apply(lambda x: x.count("|"))
 
     X, y, vectorizer = create_features(df)
 
@@ -65,16 +63,26 @@ if __name__ == "__main__":
     # print("\nTrain shape:", X_train.shape)
     # print("Test shape:", X_test.shape)
 
-    model = LogisticRegression(max_iter=5000, solver="saga", class_weight="balanced")
+    from sklearn.tree import DecisionTreeClassifier
+    from sklearn.svm import LinearSVC
+    import warnings
+    warnings.filterwarnings('ignore', category=UserWarning)
 
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    models = {
+        "Logistic Regression": LogisticRegression(max_iter=5000, solver="saga", class_weight="balanced", random_state=42),
+        "Decision Tree": DecisionTreeClassifier(class_weight="balanced", random_state=42),
+        "Linear SVC": LinearSVC(class_weight="balanced", max_iter=5000, random_state=42)
+    }
 
-    print("\nAccuracy:", accuracy_score(y_test, y_pred))
+    for name, model in models.items():
+        print(f"\n============= {name} =============")
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
 
-    print("\nClassification Report:\n")
-    print(classification_report(y_test, y_pred))
+        print(f"\nAccuracy: {accuracy_score(y_test, y_pred):.4f}")
 
-    print("\nConfusion Matrix:\n")
-    cm = confusion_matrix(y_test, y_pred)
-    print(cm)
+        print("\nClassification Report:\n")
+        print(classification_report(y_test, y_pred))
+
+        print("\nConfusion Matrix:\n")
+        print(confusion_matrix(y_test, y_pred))
