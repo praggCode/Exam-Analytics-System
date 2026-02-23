@@ -7,6 +7,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 import matplotlib.pyplot as plt
 import seaborn as sns
+import re
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -67,18 +68,29 @@ def load_models():
 def predict_difficulty(df, vectorizer, model):
     # Ensure features match training
     if "question" not in df.columns:
-        return None
+        if "title" in df.columns and "body" in df.columns:
+            st.info("💡 'question' column missing. Auto-generating from 'title' and 'body'.")
+            df["question"] = df["title"].astype(str) + " " + df["body"].astype(str)
+        else:
+            return None
     
-    # Feature Engineering (mimic training)
+    # Feature Engineering (must match model_train.py exactly)
     df["question"] = df["question"].fillna("").astype(str)
     df["question_length"] = df["question"].apply(len)
     
-    # Check for other numeric features if available, else use zeros
-    for feat in ["score", "tag_count"]:
-        if feat not in df.columns:
-            df[feat] = 0
+    # Calculate tag_count from the 'tags' column
+    if "tags" in df.columns:
+        df["tag_count"] = df["tags"].apply(lambda x: len(re.findall(r'<[^>]+>', str(x))) if pd.notna(x) else 0)
+    else:
+        df["tag_count"] = 0
+    
+    # Ensure 'score' exists (it's required by the trained model's numeric scaler)
+    if "score" not in df.columns:
+        df["score"] = 0
             
     X_tfidf = vectorizer.transform(df["question"])
+    
+    # The trained models expect [score, question_length, tag_count]
     from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
     X_numeric = scaler.fit_transform(df[["score", "question_length", "tag_count"]])
@@ -102,8 +114,14 @@ if page == "Dashboard":
     uploaded_file = st.file_uploader("Upload Question CSV", type=["csv"])
     
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        st.write("### Raw Data Preview", df.head())
+        try:
+            df = pd.read_csv(uploaded_file, on_bad_lines='warn', engine='python')
+            st.success(f"Successfully loaded {len(df)} rows.")
+            st.write("### Raw Data Preview", df.head())
+        except Exception as e:
+            st.error(f"Failed to parse CSV file: {str(e)}")
+            st.info("Please ensure your CSV uses standard formatting (UTF-8 encoding, consistent delimiters).")
+            st.stop()
         
         col_sel = st.selectbox("Choose Model", ["Logistic Regression", "Decision Tree"])
         
