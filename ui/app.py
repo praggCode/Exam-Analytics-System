@@ -11,6 +11,7 @@ import re
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from src.data_prep import clean_html
 
 st.set_page_config(page_title="Exam Analytics System", page_icon="📝", layout="wide")
 
@@ -76,6 +77,11 @@ def predict_difficulty(df, vectorizer, model):
     
     # Feature Engineering (must match model_train.py exactly)
     df["question"] = df["question"].fillna("").astype(str)
+    
+    # Remove HTML tags from questions
+    with st.spinner("Cleaning HTML tags..."):
+        df["question"] = df["question"].apply(clean_html)
+        
     df["question_length"] = df["question"].apply(len)
     
     # Calculate tag_count from the 'tags' column

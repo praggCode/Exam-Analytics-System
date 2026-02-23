@@ -30,7 +30,7 @@ lemmatizer = WordNetLemmatizer()
 # ---------------- CONFIGURATION ----------------
 INPUT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/raw/posts_questions.csv"))
 OUTPUT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/processed/processed_data.csv"))
-TARGET_ROWS = 1000000
+TARGET_ROWS = 260000
 CHUNK_SIZE = 50000
 
 def clean_html(text):
