@@ -10,6 +10,7 @@ import joblib
 
 import numpy as np
 from scipy.sparse import hstack, csr_matrix
+import re
 
 
 import os
@@ -47,7 +48,7 @@ def create_features(df, use_embeddings=False):
     scaler = StandardScaler()
 
     X_numeric = scaler.fit_transform(
-        df[["score", "question_length"]]
+        df[["score", "question_length", "tag_count"]]
     )
     
     X = hstack([X_tfidf, X_numeric])
@@ -63,6 +64,7 @@ if __name__ == "__main__":
     df = df.dropna(subset=["question"])
     df["question"] = df["question"].astype(str)
     df["question_length"] = df["question"].apply(len)
+    df["tag_count"] = df["tags"].apply(lambda x: len(re.findall(r'<[^>]+>', str(x))) if pd.notna(x) else 0)
 
     X, y, vectorizer = create_features(df)
 
