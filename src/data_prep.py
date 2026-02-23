@@ -40,17 +40,11 @@ def clean_html(text):
     try:
         # Using lxml parser for speed as verified in requirements
         soup = BeautifulSoup(text, "lxml")
-
-        # Remove code-heavy and non-content elements
         for tag in soup.find_all(["code", "pre", "script", "style"]):
             tag.decompose()
 
         text = soup.get_text(separator=" ")
-
-        # Remove URLs
         text = re.sub(r'http\S+|www\S+', '', text)
-
-        # Normalize whitespace
         text = re.sub(r'\s+', ' ', text)
 
         # Remove stray surrogate characters

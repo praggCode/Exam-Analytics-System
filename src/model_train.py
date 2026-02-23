@@ -1,12 +1,8 @@
 import pandas as pd
-
 from sklearn.feature_extraction.text import TfidfVectorizer
-
 from sklearn.model_selection import train_test_split
-
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.tree import DecisionTreeClassifier
 from sentence_transformers import SentenceTransformer
@@ -23,7 +19,8 @@ DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/pro
 
 def load_data():
     df = pd.read_csv(DATA_PATH)
-    df = df.sample(n=300000, random_state=42)
+    if len(df) > 300000:
+        df = df.sample(n=300000, random_state=42)
     print("Dataset shape:", df.shape)
     print("\nClass distribution:\n")
     print(df["difficulty"].value_counts())
@@ -50,7 +47,7 @@ def create_features(df, use_embeddings=False):
     scaler = StandardScaler()
 
     X_numeric = scaler.fit_transform(
-        df[["score", "question_length","tag_count"]]
+        df[["score", "question_length"]]
     )
     
     X = hstack([X_tfidf, X_numeric])
@@ -66,7 +63,6 @@ if __name__ == "__main__":
     df = df.dropna(subset=["question"])
     df["question"] = df["question"].astype(str)
     df["question_length"] = df["question"].apply(len)
-    df["tag_count"] = df["tags"].apply(lambda x: x.count("|"))
 
     X, y, vectorizer = create_features(df)
 
