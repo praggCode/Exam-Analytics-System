@@ -4,14 +4,17 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-import numpy as np
-from scipy.sparse import hstack
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.svm import LinearSVC
-import warnings
-warnings.filterwarnings('ignore', category=UserWarning)
+from sentence_transformers import SentenceTransformer
+import joblib
 
-DATA_PATH = "../data/cleaned_posts_questions_data.csv"
+import numpy as np
+from scipy.sparse import hstack, csr_matrix
+
+
+import os
+
+DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/processed/processed_data.csv"))
 
 
 def load_data():
@@ -24,7 +27,18 @@ def load_data():
     return df
 
 
-def create_features(df):
+def create_features(df, use_embeddings=False):
+    if use_embeddings:
+        print("Using Sentence Embeddings...")
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        X_embeddings = model.encode(df["question"].tolist(), show_progress_bar=True)
+        scaler = StandardScaler()
+        X_numeric = scaler.fit_transform(
+            df[["score", "question_length", "tag_count"]]
+        )
+        X = hstack([csr_matrix(X_embeddings), csr_matrix(X_numeric)])
+        return X, df["difficulty"], model
+
     vectorizer = TfidfVectorizer(
         ngram_range=(1, 2), stop_words="english", max_features=50000, min_df=5
     )
@@ -60,29 +74,45 @@ if __name__ == "__main__":
         X, y, test_size=0.2, random_state=69, stratify=y
     )
 
-    # print("\nTrain shape:", X_train.shape)
-    # print("Test shape:", X_test.shape)
+    # 1. Logistic Regression
+    print("\n--- Training Logistic Regression ---")
+    lr_model = LogisticRegression(max_iter=5000, solver="saga", class_weight="balanced")
+    lr_model.fit(X_train, y_train)
+    y_pred_lr = lr_model.predict(X_test)
 
-    from sklearn.tree import DecisionTreeClassifier
-    from sklearn.svm import LinearSVC
-    import warnings
-    warnings.filterwarnings('ignore', category=UserWarning)
+    # 2. Decision Tree
+    print("\n--- Training Decision Tree ---")
+    dt_model = DecisionTreeClassifier(max_depth=20, class_weight="balanced", random_state=42)
+    dt_model.fit(X_train, y_train)
+    y_pred_dt = dt_model.predict(X_test)
 
-    models = {
-        "Logistic Regression": LogisticRegression(max_iter=5000, solver="saga", class_weight="balanced", random_state=42),
-        "Decision Tree": DecisionTreeClassifier(class_weight="balanced", random_state=42),
-        "Linear SVC": LinearSVC(class_weight="balanced", max_iter=5000, random_state=42)
-    }
+    # Comparison Report
+    print("\n" + "="*30)
+    print("MODEL PERFORMANCE COMPARISON")
+    print("="*30)
 
-    for name, model in models.items():
-        print(f"\n============= {name} =============")
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
+    print("\n[Logistic Regression]")
+    print(f"Accuracy: {accuracy_score(y_test, y_pred_lr):.4f}")
+    print("\nClassification Report:\n")
+    print(classification_report(y_test, y_pred_lr))
 
-        print(f"\nAccuracy: {accuracy_score(y_test, y_pred):.4f}")
+    print("\n[Decision Tree]")
+    print(f"Accuracy: {accuracy_score(y_test, y_pred_dt):.4f}")
+    print("\nClassification Report:\n")
+    print(classification_report(y_test, y_pred_dt))
 
-        print("\nClassification Report:\n")
-        print(classification_report(y_test, y_pred))
+    print("\n--- Confusion Matrix (Decision Tree) ---")
+    print(confusion_matrix(y_test, y_pred_dt))
 
-        print("\nConfusion Matrix:\n")
-        print(confusion_matrix(y_test, y_pred))
+    # Save Models
+    MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../models"))
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    
+    print("\n--- Saving Models ---")
+    if isinstance(vectorizer, TfidfVectorizer):
+        joblib.dump(vectorizer, os.path.join(MODELS_DIR, "vectorizer.joblib"))
+    
+    joblib.dump(lr_model, os.path.join(MODELS_DIR, "lr_model.joblib"))
+    joblib.dump(dt_model, os.path.join(MODELS_DIR, "dt_model.joblib"))
+    
+    print(f"Models saved successfully to: {MODELS_DIR}")
